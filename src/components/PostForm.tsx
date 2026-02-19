@@ -9,7 +9,7 @@ type PostFormProps = {
   userInitial?: string;
   value: string;
   onChange: (value: string) => void; //入力したものが変化したときの処理
-  onSubmit: () => void; //フォームのボタンが押されたかどうかの処理
+  onSubmit: (e: React.FormEvent) => void; //フォームのボタンが押されたかどうかの処理
   disabled?: boolean; //送信ボタンの状態
 };
 
