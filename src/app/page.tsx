@@ -1,30 +1,15 @@
 "use client";
 
-// ========================================
-// インポート
-// ========================================
-
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-
-// コンポーネントをインポート
-import Header from "@/components/Header";
-import PostForm from "@/components/PostForm";
-import PostCard from "@/components/PostCard";
-
 import type { Post } from "@/types";
 import type { User } from "@supabase/supabase-js";
 
-// ========================================
-// 環境変数から API URL を取得
-// ========================================
-
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8888";
-
-// ========================================
-// メインページコンポーネント
-// ========================================
+import Header from "@/components/Header";
+import PostForm from "@/components/PostForm";
+import PostCard from "@/components/PostCard";
 
 export default function Home() {
   // ========================================
@@ -35,14 +20,8 @@ export default function Home() {
   const [newPost, setNewPost] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // --- Day3 追加 ---
   const [animatingId, setAnimatingId] = useState<number | null>(null);
-
-  // --- Day3 追加 ---
-  const [uploading, setUploading] = useState(false); // 画像アップロード中
-
-  // → いいねアニメーション用
+  const [uploading, setUploading] = useState(false);
 
   // ========================================
   // Hooks の初期化
@@ -71,7 +50,7 @@ export default function Home() {
 
     setUser(user);
     setLoading(false);
-    fetchPosts(user.id); // Day3 変更: ユーザーIDを渡す
+    fetchPosts(user.id);
   };
 
   // ========================================
@@ -80,10 +59,7 @@ export default function Home() {
 
   const fetchPosts = async (userId?: string) => {
     try {
-      // userId をクエリパラメータで送る
-      const url = userId
-        ? `${API_URL}/api/posts?userId=${userId}`
-        : `${API_URL}/api/posts`;
+      const url = userId ? `${API_URL}/api/posts?userId=${userId}` : `${API_URL}/api/posts`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -102,9 +78,7 @@ export default function Home() {
       const fileExt = file.name.split(".").pop();
       const fileName = `${user?.id}/${Date.now()}.${fileExt}`;
 
-      const { data, error } = await supabase.storage
-        .from("images")
-        .upload(fileName, file);
+      const { data, error } = await supabase.storage.from("images").upload(fileName, file);
 
       if (error) {
         console.error("Upload error:", error);
@@ -123,12 +97,12 @@ export default function Home() {
   };
 
   // ========================================
-  // 投稿を作成
+  // 投稿を作成（画像付き）
   // ========================================
 
   const handleSubmit = async (e: React.FormEvent, imageFile: File | null) => {
     e.preventDefault();
-    if (!newPost.trim()) return;
+    if (!newPost.trim() || !user) return;
 
     setUploading(true);
 
@@ -153,7 +127,7 @@ export default function Home() {
         body: JSON.stringify({
           content: newPost,
           imageUrl,
-          userId: user?.id,
+          userId: user.id,
         }),
       });
 
@@ -162,9 +136,57 @@ export default function Home() {
       }
 
       setNewPost("");
-      fetchPosts(user?.id);
+      fetchPosts(user.id);
     } catch (error) {
       console.error("Error creating post:", error);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ========================================
+  // いいね処理
+  // ========================================
+
+  const handleLike = async (postId: number, isLiked: boolean) => {
+    if (!user) return;
+
+    setAnimatingId(postId);
+    setTimeout(() => setAnimatingId(null), 400);
+
+    try {
+      const method = isLiked ? "DELETE" : "POST";
+
+      const response = await fetch(`${API_URL}/api/posts/${postId}/like`, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user.id,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("いいねに失敗しました");
+      }
+
+      const data = await response.json();
+
+      setPosts(
+        posts.map((post) => {
+          if (post.id === postId) {
+            return {
+              ...post,
+              likeCount: data.likeCount,
+              isLiked: data.isLiked,
+            };
+          }
+          return post;
+        }),
+      );
+    } catch (error) {
+      console.error("Error toggling like:", error);
     }
   };
 
@@ -184,7 +206,7 @@ export default function Home() {
         throw new Error("削除に失敗しました");
       }
 
-      fetchPosts();
+      fetchPosts(user?.id);
     } catch (error) {
       console.error("Error deleting post:", error);
     }
@@ -212,95 +234,20 @@ export default function Home() {
   }
 
   // ========================================
-  // いいね処理（新規追加）
-  // ========================================
-
-  // --- Day3 追加 ここから ---
-  const handleLike = async (postId: number, isLiked: boolean) => {
-    if (!user) return;
-
-    // アニメーション開始
-    setAnimatingId(postId);
-    setTimeout(() => setAnimatingId(null), 400);
-
-    try {
-      const method = isLiked ? "DELETE" : "POST";
-
-      const response = await fetch(`${API_URL}/api/posts/${postId}/like`, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: user.id,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("いいねに失敗しました");
-      }
-
-      const data = await response.json();
-
-      // 投稿一覧を更新（該当の投稿だけ更新）
-      setPosts(
-        posts.map((post) => {
-          if (post.id === postId) {
-            return {
-              ...post,
-              likeCount: data.likeCount,
-              isLiked: data.isLiked,
-            };
-          }
-          return post;
-        }),
-      );
-    } catch (error) {
-      console.error("Error toggling like:", error);
-    }
-  };
-  // --- Day3 追加 ここまで ---
-
-  // ========================================
-  // UI
+  // UI（コンポーネントを使用）
   // ========================================
 
   return (
     <div className="min-h-screen">
-      {/* ヘッダー（コンポーネントを使用） */}
-      <Header
-        userInitial={user?.email?.charAt(0).toUpperCase()}
-        onLogout={handleLogout}
-      />
+      {/* ヘッダー */}
+      <Header userInitial={user?.email?.charAt(0).toUpperCase()} onLogout={handleLogout} />
 
       <main className="max-w-2xl mx-auto px-4 py-6">
-        {/* 投稿フォーム（コンポーネントを使用） */}
-        <PostForm
-          userInitial={user?.email?.charAt(0).toUpperCase()}
-          value={newPost}
-          onChange={setNewPost}
-          onSubmit={handleSubmit} // Day3: 画像ファイルも受け取る
-          disabled={uploading} // Day3 追加
-        />
+        {/* 投稿フォーム */}
+        <PostForm userInitial={user?.email?.charAt(0).toUpperCase()} value={newPost} onChange={setNewPost} onSubmit={handleSubmit} disabled={uploading} />
 
         {/* タイムライン */}
-        <div className="space-y-4">
-          {posts.length === 0 ? (
-            <div className="text-center text-white/50 py-12">
-              まだ投稿がありません
-            </div>
-          ) : (
-            posts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                onDelete={handleDelete}
-                onLike={handleLike} // Day3 追加
-                isAnimating={animatingId === post.id} // Day3 追加
-              />
-            ))
-          )}
-        </div>
+        <div className="space-y-4">{posts.length === 0 ? <div className="text-center text-white/50 py-12">まだ投稿がありません</div> : posts.map((post) => <PostCard key={post.id} post={post} onDelete={handleDelete} onLike={handleLike} isAnimating={animatingId === post.id} />)}</div>
       </main>
     </div>
   );
